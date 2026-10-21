@@ -1,0 +1,28 @@
+{
+  "description": "stackwise: warn-only security scan of new code at write time, and an opt-in review reminder on git push (STACKWISE_PREPUSH=1). Neither hook ever blocks a tool call.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/security-guard.mjs\"",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(git *)",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/prepush-review.mjs\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
