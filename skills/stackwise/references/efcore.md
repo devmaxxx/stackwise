@@ -1,39 +1,58 @@
-# EF Core and migrations
+# EF Core, Dapper and migrations
 
 Gate findings on evidence: a source-only review proves query shape, not query cost.
-Flag a missing index only when the migrations or model configuration are in view.
+Flag a missing index only when the migrations or model configuration are in view; a loop
+that mutates tracked entities and calls `SaveChanges` once afterwards is one batch, not N+1.
 
 ## Checklist
 
 ### Queries
-- [ ] No query inside a loop over entities (N+1); no lazy-loading navigation access in a loop.
-- [ ] Read-only queries returning entities use `AsNoTracking()` (or the context defaults to no-tracking); scalar/DTO projections need nothing.
-- [ ] Several collection `Include`s on one query → cartesian explosion; use `AsSplitQuery()` or projection.
+- [ ] No query inside a loop over entities (N+1); no lazy-loading navigation access in a loop. `UseLazyLoadingProxies` or new `virtual` navigations turn each first access into a sync query.
+- [ ] Read-only queries returning entities use `AsNoTracking()` (or the context defaults to no-tracking); scalar/DTO projections need nothing, but an entity inside a projection (`new { o, o.Customer }`) is tracked.
+- [ ] Several collection `Include`s on one query → cartesian explosion; use `AsSplitQuery()` or projection. Split queries with `Skip`/`Take` need a unique ordering.
 - [ ] List endpoints are bounded: `Take`, paging with a max page size; offset paging on large tables considered against keyset.
-- [ ] `OrderBy` before `Skip`/`Take` (unordered paging returns unstable pages).
+- [ ] `OrderBy` before `Skip`/`Take`, ending in a unique column (`ThenBy(x => x.Id)`); a second `OrderBy` replaces the first instead of adding to it.
+- [ ] Keyset cursors compare every ordered column: `CreatedAt < c || (CreatedAt == c && Id < cid)`, not `CreatedAt < c` alone.
 - [ ] Projection (`Select` to a DTO) instead of loading whole entities to return three fields.
-- [ ] Filters run in SQL: no `AsEnumerable()`/`ToList()` before `Where`; no client-evaluated method in a predicate.
-- [ ] Predicates do not wrap the column in a function (`x.Email.ToLower() == e`) where an index would be used.
+- [ ] Filters run in SQL: no `AsEnumerable()`/`ToList()` before `Where`; no client-evaluated method in a predicate; a repository returning `IEnumerable<T>` makes every caller's `Where` run in memory.
+- [ ] No app-side joins: two `ToListAsync` calls stitched with LINQ in memory load both tables; join or project in one query.
+- [ ] Predicates do not wrap the column in a function where an index would be used: `x.Email.ToLower() == e`, `x.CreatedAt.Year == y` (use a half-open range), `x.Code.ToString() == s`.
 - [ ] Async all the way: `ToListAsync(ct)`, `SaveChangesAsync(ct)`.
-- [ ] Bulk changes use `ExecuteUpdateAsync`/`ExecuteDeleteAsync` when tracking semantics are not needed (and note they bypass interceptors and the change tracker).
+- [ ] Bulk changes use `ExecuteUpdateAsync`/`ExecuteDeleteAsync` when tracking semantics are not needed; they bypass `SaveChanges` (interceptors, audit stamps, client cascades, concurrency checks), leave loaded entities stale, and commit on their own.
 
-### DbContext
+### DbContext and saving
 - [ ] `DbContext` is scoped (or from `IDbContextFactory`); never a singleton, never captured by one.
-- [ ] No concurrent operations on one context (`Task.WhenAll` over queries on the same `_db`).
+- [ ] No concurrent operations on one context (`Task.WhenAll` over queries on the same `_db`), including two repositories that share the scoped context.
 - [ ] Optimistic concurrency (`[Timestamp]`/`IsRowVersion()`) for entities edited by more than one user; `DbUpdateConcurrencyException` handled.
-- [ ] Multi-step writes that must be atomic share one `SaveChanges` or an explicit transaction, inside the execution strategy when retries are on.
+- [ ] Multi-step writes that must be atomic share one `SaveChanges` or an explicit transaction, inside `CreateExecutionStrategy().ExecuteAsync` when retries are on.
+- [ ] On a context with `UseQueryTrackingBehavior(NoTracking)`, writes load with `AsTracking()`; otherwise mutate + `SaveChanges` saves nothing, silently.
+- [ ] `_db.Update(entity)` on a detached or request-built entity marks every column modified: unsent fields become null/default and concurrent edits are overwritten. Load, then set.
+- [ ] No `SaveChanges` per item in a loop, including one hidden in a repository method the loop calls.
+- [ ] Long imports batch, call `ChangeTracker.Clear()` or use a fresh context per batch; one context for a million rows grows until `DetectChanges` dominates.
+- [ ] Retried writes (consumers, webhooks, jobs) are idempotent through a unique index, not an existence check that two retries pass at once.
+- [ ] Pooled contexts (`AddDbContextPool`) keep no per-request state in fields (tenant id, user): a pooled instance carries it to the next request.
 
-### Raw SQL
+### Raw SQL and Dapper
 - [ ] `FromSqlRaw` / `ExecuteSqlRaw` never receive interpolated or concatenated input; use `FromSql` / `FromSqlInterpolated` / `ExecuteSql` (parameterized).
+- [ ] Dapper SQL is never built with `$"..."` or `+` around values; values go in the parameter object. Do not flag `WHERE Id IN @ids`: Dapper expands the list into parameters.
 - [ ] Dynamic column or table names come from an allow-list, never from input.
+- [ ] Dapper calls pass the token through `CommandDefinition(..., cancellationToken: ct)`; connections are disposed.
 
 ### Migrations
-- [ ] Generated by tooling and matches the model snapshot; `Down` is sensible.
-- [ ] No data loss: `DropColumn`/`DropTable` and type narrowing (`nvarchar(max)` → `nvarchar(50)`, `bigint` → `int`) are intended and data is migrated first.
+- [ ] Generated by tooling and matches the model snapshot; `Down` is sensible. An applied migration is never edited or deleted; fix forward with a new one.
+- [ ] No data loss: `DropColumn`/`DropTable` and type narrowing (`nvarchar(max)` → `nvarchar(50)` from a new `HasMaxLength`, `bigint` → `int`) are intended and data is migrated first.
 - [ ] A rename shows as `RenameColumn`, not `DropColumn` + `AddColumn` (EF guesses; a drop/add loses the data).
 - [ ] New non-nullable column on a populated table has a default or a backfill step.
+- [ ] Enabling NRT on entity classes turns every `string` into NOT NULL; an unexpected `AlterColumn(... nullable: false)` in the same diff is a finding.
 - [ ] Locking: index creation on large tables uses an online/concurrent option where the provider supports it; long backfills are batched rather than one `UPDATE` in the migration.
 - [ ] Deploy order: the old app version still works against the new schema (expand → migrate → contract).
+
+### Only on a hot path or large data
+- [ ] `CountAsync() > 0` → `AnyAsync()`; keep `CountAsync` when the number is shown.
+- [ ] Deep offset pages scan and discard every skipped row → keyset paging.
+- [ ] Composite indexes put equality columns first, then the range or sort column (only with the model configuration in view).
+- [ ] Dynamic predicates built with `Expression.Constant(requestValue)` compile a new query per value and grow the query cache; close over a variable.
+- [ ] `EF.CompileAsyncQuery` only for measured hot shapes; ordinary LINQ queries are already cached.
 
 ## N+1
 
@@ -80,6 +99,31 @@ public Task<List<ProductDto>> Page(int page = 1, int size = 50, CancellationToke
 }
 ```
 
+## Stable ordering and keyset paging
+
+```csharp
+// ❌ The second OrderBy replaces the first: the feed comes out in Id order, not newest first.
+q.OrderByDescending(o => o.CreatedAt).OrderBy(o => o.Id)
+// ❌ Rows sharing a CreatedAt can repeat or vanish between pages.
+q.OrderByDescending(o => o.CreatedAt).Skip(page * size).Take(size)
+
+// ✅ A unique order, and a cursor over the same columns in the same direction.
+q.Where(o => o.CreatedAt < c.CreatedAt || (o.CreatedAt == c.CreatedAt && o.Id < c.Id))
+ .OrderByDescending(o => o.CreatedAt).ThenByDescending(o => o.Id).Take(size)
+```
+
+## Repositories that return IEnumerable
+
+```csharp
+// ❌ The caller's Where and Take bind to Enumerable: the whole table streams into memory first.
+public IEnumerable<Order> GetAll() => _db.Orders;
+var recent = _repo.GetAll().Where(o => o.CustomerId == id).Take(10);
+
+// ✅ Filter and materialize inside the repository.
+public Task<List<Order>> GetRecentAsync(int customerId, int take, CancellationToken ct) =>
+    _db.Orders.Where(o => o.CustomerId == customerId).OrderByDescending(o => o.CreatedAt).Take(take).ToListAsync(ct);
+```
+
 ## Concurrent use of one DbContext
 
 ```csharp
@@ -90,17 +134,89 @@ await Task.WhenAll(a, b);
 // ✅ Await sequentially, or use IDbContextFactory for one context per task.
 ```
 
-## Raw SQL
+The same failure hides behind `Task.WhenAll(_users.CountAsync(ct), _orders.CountAsync(ct))` when both repositories take the scoped context.
+
+## Writes that save nothing or too much
+
+```csharp
+// ❌ The context defaults to NoTracking: nothing is tracked, SaveChanges finds no changes, the rename is lost.
+var user = await _db.Users.SingleAsync(u => u.Id == id, ct);
+user.DisplayName = name;
+await _db.SaveChangesAsync(ct);
+
+// ❌ Update marks every column modified: Phone, Role and Email from the request DTO overwrite the row, nulls included.
+_db.Update(new User { Id = id, DisplayName = name });
+
+// ✅ Load with tracking, set what changed.
+var user = await _db.Users.AsTracking().SingleAsync(u => u.Id == id, ct);
+user.DisplayName = name;
+```
+
+## ExecuteUpdate and ExecuteDelete
+
+```csharp
+// ❌ Runs at once, outside SaveChanges: the audit interceptor never sees it, tracked orders keep the
+//    old Status, and if the SaveChanges that follows fails the bulk change stays.
+await _db.Orders.Where(o => o.BatchId == batchId).ExecuteUpdateAsync(s => s.SetProperty(o => o.Status, OrderStatus.Shipped), ct);
+_db.Shipments.Add(shipment);
+await _db.SaveChangesAsync(ct);
+
+// ✅ One transaction around both, and the audit columns set in the same call.
+await using var tx = await _db.Database.BeginTransactionAsync(ct);
+await _db.Orders.Where(o => o.BatchId == batchId).ExecuteUpdateAsync(s => s
+    .SetProperty(o => o.Status, OrderStatus.Shipped).SetProperty(o => o.UpdatedAt, _clock.GetUtcNow()), ct);
+```
+
+With retries on, that transaction also goes inside the execution strategy, as below.
+
+## Transactions with a retrying execution strategy
+
+```csharp
+// ❌ With EnableRetryOnFailure this throws: the retrying strategy does not support user-initiated transactions.
+await using var tx = await _db.Database.BeginTransactionAsync(ct);
+
+// ✅ The whole unit retries together.
+var strategy = _db.Database.CreateExecutionStrategy();
+await strategy.ExecuteAsync(async () =>
+{
+    await using var tx = await _db.Database.BeginTransactionAsync(ct);
+    _db.Orders.Add(order);
+    await _db.SaveChangesAsync(ct);
+    await tx.CommitAsync(ct);
+});
+```
+
+## Imports and retried writes
+
+```csharp
+// ❌ One round trip and transaction per row; the tracker still holds every row.
+foreach (var row in rows) { _db.Payments.Add(row.ToEntity()); await _db.SaveChangesAsync(ct); }
+
+// ✅ Batches and a cleared tracker; a unique index on ExternalId makes a re-run fail instead of duplicating.
+foreach (var batch in rows.Chunk(1000))
+{
+    _db.Payments.AddRange(batch.Select(r => r.ToEntity()));
+    await _db.SaveChangesAsync(ct);
+    _db.ChangeTracker.Clear();
+}
+```
+
+Breaks when: the job crashes at row 600k and the scheduler starts it again from the top.
+
+## Raw SQL and Dapper
 
 ```csharp
 // ❌ SQL injection: name = "x'; DROP TABLE Users;--"
 _db.Users.FromSqlRaw($"SELECT * FROM Users WHERE Name = '{name}'");
+await conn.QueryAsync<User>($"SELECT * FROM Users WHERE Name = '{name}'");
 
-// ✅ Interpolated overloads turn holes into parameters.
+// ✅ EF's interpolated overloads turn holes into parameters; Dapper takes a parameter object.
 _db.Users.FromSql($"SELECT * FROM Users WHERE Name = {name}");
+await conn.QueryAsync<User>(new CommandDefinition("SELECT * FROM Users WHERE Name = @name", new { name }, cancellationToken: ct));
 ```
 
 `FromSqlRaw` with an interpolated string compiles and runs — that is why it is easy to miss.
+Dapper has no interpolated overload: any `$"..."` passed to it is concatenation.
 
 ## Migrations
 
@@ -119,4 +235,12 @@ migrationBuilder.AddColumn<int>(name: "Priority", table: "Tickets", nullable: fa
 
 // ✅
 migrationBuilder.AddColumn<int>(name: "Priority", table: "Tickets", nullable: false, defaultValue: 0);
+```
+
+```csharp
+// ❌ Came with <Nullable>enable</Nullable>, not with any model change: existing NULLs are overwritten
+//    with '' or the ALTER fails, and the old app version can no longer insert without the field.
+migrationBuilder.AlterColumn<string>(name: "MiddleName", table: "Users", nullable: false, defaultValue: "", oldNullable: true);
+
+// ✅ Declare the property `string?` where NULL is valid and regenerate; the AlterColumn disappears.
 ```
