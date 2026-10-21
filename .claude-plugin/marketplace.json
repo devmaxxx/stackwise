@@ -9,8 +9,8 @@
     {
       "name": "stackwise",
       "source": "./",
-      "description": "PR review skill and /stackwise:review command for .NET, ASP.NET Core, EF Core, Node.js, TypeScript and React diffs.",
-      "version": "0.1.0",
+      "description": "PR review skill and /stackwise:review command for .NET, ASP.NET Core, EF Core, Node.js, NestJS, TypeScript, React and Next.js diffs.",
+      "version": "0.2.0",
       "category": "development"
     }
   ]

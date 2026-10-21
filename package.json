@@ -1,12 +1,12 @@
 {
   "name": "stackwise",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Claude Code plugin: stack-aware PR review for .NET + Node.js + React.",
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "test": "node tests/validate.mjs"
+    "test": "node tests/validate.mjs && node --test tests/hooks.test.mjs"
   },
   "engines": {
     "node": ">=18"
