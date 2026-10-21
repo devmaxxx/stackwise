@@ -1,0 +1,72 @@
+# stackwise PR review on GitHub Actions.
+# Copy to .github/workflows/stackwise-review.yml and add an ANTHROPIC_API_KEY repository secret.
+name: stackwise review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+    paths:
+      - "**/*.cs"
+      - "**/*.csproj"
+      - "**/*.sln"
+      - "**/*.slnx"
+      - "**/Directory.Build.props"
+      - "**/Directory.Packages.props"
+      - "**/appsettings*.json"
+      - "**/Migrations/**"
+      - "**/*.sql"
+      - "**/*.ts"
+      - "**/*.tsx"
+      - "**/*.js"
+      - "**/*.jsx"
+      - "**/*.mjs"
+      - "**/*.cjs"
+      - "**/package.json"
+      - "**/tsconfig*.json"
+      - "**/next.config.*"
+
+concurrency:
+  # A new push makes the review of the previous head worthless.
+  group: stackwise-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    # pull_request runs from forks get no secrets, so they would only fail; drafts wait for ready_for_review.
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6.1.0
+        with:
+          # The vertical and horizontal passes read code outside the diff and diff against the base.
+          fetch-depth: 0
+
+      - uses: anthropics/claude-code-action@v1.0.256
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          plugin_marketplaces: https://github.com/devmaxxx/stackwise.git
+          plugins: stackwise@stackwise
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+            BASE: ${{ github.event.pull_request.base.ref }}
+
+            Review this pull request with the stackwise skill (stackwise:stackwise) and follow its
+            workflow exactly. The PR's merge commit is checked out in the working directory.
+
+            Then post the result:
+            - Each must and should finding: one inline comment on the line it cites, with
+              mcp__github_inline_comment__create_inline_comment (confirmed: true), body
+              "**<grade>** — <defect>. Breaks when: <input>. Fix: <fix>." Add a suggestion block
+              only when applying it fixes the issue completely.
+            - Findings whose line is outside the diff, nits, Questions and Notes go in the summary.
+            - One summary with `gh pr comment`: the Stacks, Risk and Verdict lines and the counts.
+              With no findings, say so and list what was checked.
+            Do not approve, request changes, push or edit files.
+          claude_args: |
+            --allowedTools "Skill,Agent,Read,Grep,Glob,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git blame:*),Bash(git grep:*),Bash(git fetch:*),Bash(git merge-base:*),Bash(git rev-parse:*),mcp__github_inline_comment__create_inline_comment"
