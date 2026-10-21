@@ -100,7 +100,7 @@ them reachable or worse; mention at most one under "Notes".
 | Grade | Meaning | Examples |
 |-------|---------|----------|
 | **must** | Wrong result, data loss, security hole, crash, or outage under realistic use. Blocks merge. | missing auth on an endpoint, SQL built from input, migration that drops data, `.Result` deadlock on a request path, captive scoped `DbContext` |
-| **should** | Real defect with narrower reach, or a cost that grows with data/traffic. Fix in this PR unless argued. | N+1 on a list endpoint, fetch race showing stale data, missing `CancellationToken` on a long query, missing test for the changed branch |
+| **should** | Real defect with narrower reach, or a cost that grows with data/traffic. Fix in this PR unless argued. | N+1 on a list endpoint, fetch race showing stale data, missing `CancellationToken` on a long query, missing test for a changed branch whose siblings are tested |
 | **nit** | Correct but worth a one-line change; never blocks. Cap at five. | misleading name, redundant `ToList()`, a `key={index}` on a static list |
 
 ## 7. Output
@@ -122,6 +122,9 @@ Verdict: request changes | approve with comments | approve
 
 ### Questions
 - <thing you could not verify, and what would settle it>
+
+### Notes
+- <worth knowing but not a defect in this diff, e.g. a dependency bump with no lockfile in the repo>
 
 Checked and fine: <one line naming the risky areas you inspected and cleared>
 ```

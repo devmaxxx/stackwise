@@ -40,7 +40,7 @@
 - [ ] Database queries are parameterized (`$1`, `?`, query builders); no template-string SQL.
 
 ### Dependencies
-- [ ] `package.json` changes come with a lockfile change (and vice versa); no unexpected registry or git URL; install scripts of new packages considered.
+- [ ] `package.json` changes come with a lockfile change (and vice versa). A committed lockfile now out of sync breaks `npm ci`, so it is a should; with no lockfile in the repo, mention it under Notes only. No unexpected registry or git URL; install scripts of new packages considered.
 - [ ] New dependency justified (size, maintenance, license); not a duplicate of an existing one.
 - [ ] Version ranges did not jump a major without code changes for it.
 
