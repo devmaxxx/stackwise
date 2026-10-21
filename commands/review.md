@@ -1,7 +1,7 @@
 ---
 description: Review a PR, branch or path in a .NET + Node.js + React repo with the stackwise skill; prints verified findings, posts inline PR comments only with --comment
-argument-hint: "[PR#|branch|path] [--comment]"
-allowed-tools: Bash(gh pr view:*), Bash(gh pr diff:*), Bash(gh api:*), Bash(gh repo view:*), Bash(git diff:*), Bash(git log:*), Bash(git fetch:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git show:*), Read, Grep, Glob
+argument-hint: "[PR#|branch|path|file.diff] [--comment]"
+allowed-tools: Bash(gh pr view:*), Bash(gh pr diff:*), Bash(gh repo view:*), Bash(git diff:*), Bash(git log:*), Bash(git fetch:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git show:*), Read, Grep, Glob
 ---
 
 Review the target with the `stackwise` skill. Load it first and follow its workflow
@@ -16,7 +16,9 @@ Strip `--comment` from the arguments; what remains is the target.
 
 - A number or a PR URL → that pull request (`gh pr view`, `gh pr diff`).
 - A branch name (`git rev-parse --verify <name>` succeeds) → `git diff origin/<base>...<name>`.
-- An existing path → the branch diff limited to that path.
+- An existing `.diff` or `.patch` file → its contents are the change under review. The
+  files it touches may not exist locally, so review from the hunks and say so under Notes.
+- Any other existing path → the branch diff limited to that path.
 - Empty → the open PR for the current branch if `gh pr view` finds one, otherwise the
   local change against the base branch.
 
