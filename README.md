@@ -263,7 +263,7 @@ Blind runs on 2026-10-21, one fresh headless session per fixture:
 | 0.2.0 | 6 | 12/12 | 1 | 6/6 | pass |
 
 The remaining false positive is in the `dotnet` fixture: the ownership check is graded must,
-although the fixture's siblings are out of view and the expected answer is a question.
+although the fixture's siblings are out of view and the expected answer is a question ([#12](https://github.com/devmaxxx/stackwise/issues/12)).
 
 ## 🗺️ Roadmap
 
@@ -274,13 +274,21 @@ although the fixture's siblings are out of view and the expected answer is a que
 - [x] Advisory security hook and opt-in pre-push hook
 - [x] GitHub Actions template
 - [x] Fix eval with a scripted check
-- [ ] Automated eval runner with hit / miss / false-positive scoring
-- [ ] Plugin icon
-- [ ] Blazor and SignalR checklists
-- [ ] Vue and Angular front-end variants
-- [ ] Security hook: raw SQL built on an earlier line, and multi-line calls
-- [ ] CI template: skip findings already posted on an earlier push
-- [ ] Fix evals for .NET and React
+- [ ] Automated eval runner with hit / miss / false-positive scoring ([#1](https://github.com/devmaxxx/stackwise/issues/1))
+- [ ] Plugin icon ([#2](https://github.com/devmaxxx/stackwise/issues/2))
+- [ ] Blazor and SignalR checklists ([#3](https://github.com/devmaxxx/stackwise/issues/3))
+- [ ] Vue and Angular front-end variants ([#4](https://github.com/devmaxxx/stackwise/issues/4))
+- [ ] Security hook: raw SQL built on an earlier line, and multi-line calls ([#5](https://github.com/devmaxxx/stackwise/issues/5))
+- [ ] CI template: skip findings already posted on an earlier push ([#8](https://github.com/devmaxxx/stackwise/issues/8))
+- [ ] CI template: an end-to-end run on a sample pull request ([#9](https://github.com/devmaxxx/stackwise/issues/9))
+- [ ] Fix evals for .NET and React ([#10](https://github.com/devmaxxx/stackwise/issues/10))
+- [ ] Review fixtures backed by a repo, so the horizontal pass can run ([#11](https://github.com/devmaxxx/stackwise/issues/11))
+- [ ] Lens agents that get the diff and need no Bash ([#15](https://github.com/devmaxxx/stackwise/issues/15))
+
+Known gaps: hook false positives and missed push forms ([#6](https://github.com/devmaxxx/stackwise/issues/6), [#7](https://github.com/devmaxxx/stackwise/issues/7)), severity
+and dispatch misses seen in the evals ([#12](https://github.com/devmaxxx/stackwise/issues/12), [#13](https://github.com/devmaxxx/stackwise/issues/13), [#14](https://github.com/devmaxxx/stackwise/issues/14)) and the
+per-session token cost ([#16](https://github.com/devmaxxx/stackwise/issues/16)). All of them are in the
+[v0.3.0 milestone](https://github.com/devmaxxx/stackwise/milestone/1).
 
 ## 📜 License
 
