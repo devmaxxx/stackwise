@@ -1,0 +1,84 @@
+diff --git a/src/Billing.Api/Program.cs b/src/Billing.Api/Program.cs
+index 6a2f0c1..b83d4e7 100644
+--- a/src/Billing.Api/Program.cs
++++ b/src/Billing.Api/Program.cs
+@@ -8,6 +8,8 @@ builder.Services.AddDbContext<BillingDbContext>(o =>
+     o.UseSqlServer(builder.Configuration.GetConnectionString("Billing")));
+ builder.Services.AddScoped<IInvoiceService, InvoiceService>();
++builder.Services.Configure<WebhookOptions>(builder.Configuration.GetSection("Payments"));
++builder.Services.AddScoped<PaymentWebhookHandler>();
+ 
+ var app = builder.Build();
+ 
+ app.UseExceptionHandler();
+@@ -21,4 +23,12 @@ app.UseAuthorization();
+ 
+ app.MapControllers();
+ 
++app.MapPost("/webhooks/payments", async (HttpRequest request, PaymentWebhookHandler handler, CancellationToken ct) =>
++{
++    using var reader = new StreamReader(request.Body);
++    var payload = await reader.ReadToEndAsync(ct);
++    var signature = request.Headers["X-Signature"].ToString();
++    return await handler.HandleAsync(payload, signature, ct) ? Results.Ok() : Results.Unauthorized();
++}).AllowAnonymous();
++
+ app.Run();
+diff --git a/src/Billing.Api/Payments/PaymentWebhookHandler.cs b/src/Billing.Api/Payments/PaymentWebhookHandler.cs
+new file mode 100644
+index 0000000..4f7e2a9
+--- /dev/null
++++ b/src/Billing.Api/Payments/PaymentWebhookHandler.cs
+@@ -0,0 +1,52 @@
++using System.Security.Cryptography;
++using System.Text;
++using System.Text.Json;
++using Microsoft.EntityFrameworkCore;
++using Microsoft.Extensions.Options;
++
++namespace Billing.Api.Payments;
++
++public sealed class WebhookOptions
++{
++    public string? WebhookSecret { get; set; }
++}
++
++public sealed record PaymentEvent(string EventId, int InvoiceId, decimal Amount, DateTimeOffset PaidAt);
++
++public sealed class PaymentWebhookHandler(
++    BillingDbContext db,
++    IOptions<WebhookOptions> options,
++    ILogger<PaymentWebhookHandler> logger)
++{
++    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
++
++    public async Task<bool> HandleAsync(string payload, string signature, CancellationToken ct)
++    {
++        if (!IsSigned(payload, signature))
++            return false;
++
++        try
++        {
++            var evt = JsonSerializer.Deserialize<PaymentEvent>(payload, Json)!;
++            var invoice = await db.Invoices.SingleAsync(i => i.Id == evt.InvoiceId, ct);
++            invoice.MarkPaid(evt.Amount, evt.PaidAt);
++            await db.SaveChangesAsync(ct);
++        }
++        catch (Exception ex)
++        {
++            logger.LogWarning(ex, "Payment event could not be applied");
++        }
++
++        return true;
++    }
++
++    private bool IsSigned(string payload, string signature)
++    {
++        var secret = options.Value.WebhookSecret;
++        if (string.IsNullOrEmpty(secret))
++            return true;
++
++        var expected = Convert.ToHexString(HMACSHA256.HashData(Encoding.UTF8.GetBytes(secret), Encoding.UTF8.GetBytes(payload)));
++        return string.Equals(expected, signature, StringComparison.OrdinalIgnoreCase);
++    }
++}

@@ -1,6 +1,6 @@
 # Expected findings: dotnet
 
-Stacks the skill should detect: .NET, ASP.NET Core, EF Core. References: dotnet-csharp, aspnetcore, efcore, security, testing.
+Stacks the skill should detect: .NET, ASP.NET Core, EF Core. Required references: dotnet-csharp, aspnetcore, efcore, error-handling, security, testing. Optional: performance, api-design. Must not load: nodejs, nestjs, typescript, react, nextjs.
 
 ## must
 

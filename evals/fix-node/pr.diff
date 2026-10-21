@@ -1,0 +1,90 @@
+diff --git a/public/app.css b/public/app.css
+new file mode 100644
+index 0000000..2e57820
+--- /dev/null
++++ b/public/app.css
+@@ -0,0 +1,8 @@
++body {
++  margin: 0;
++  font-family: system-ui, sans-serif;
++}
++
++.price {
++  font-weight: 600;
++}
+diff --git a/src/assets.js b/src/assets.js
+new file mode 100644
+index 0000000..b5e893d
+--- /dev/null
++++ b/src/assets.js
+@@ -0,0 +1,23 @@
++import { readFile } from 'node:fs/promises';
++import { extname, join } from 'node:path';
++
++const TYPES = {
++  '.css': 'text/css; charset=utf-8',
++  '.js': 'text/javascript; charset=utf-8',
++  '.png': 'image/png',
++};
++
++export function resolveAsset(root, urlPath) {
++  const rel = decodeURIComponent(urlPath.slice('/assets/'.length));
++  return join(root, rel);
++}
++
++export async function serveAsset(root, urlPath) {
++  const file = resolveAsset(root, urlPath);
++  try {
++    const body = await readFile(file);
++    return { status: 200, type: TYPES[extname(file)] ?? 'application/octet-stream', body };
++  } catch {
++    return { status: 404 };
++  }
++}
+diff --git a/src/server.js b/src/server.js
+new file mode 100644
+index 0000000..a74141e
+--- /dev/null
++++ b/src/server.js
+@@ -0,0 +1,17 @@
++import { createServer } from 'node:http';
++import { fileURLToPath } from 'node:url';
++import { serveAsset } from './assets.js';
++
++const root = fileURLToPath(new URL('../public/', import.meta.url));
++
++const server = createServer(async (req, res) => {
++  if (!req.url.startsWith('/assets/')) {
++    res.writeHead(404).end();
++    return;
++  }
++  const asset = await serveAsset(root, req.url);
++  res.writeHead(asset.status, asset.type ? { 'content-type': asset.type } : {});
++  res.end(asset.body);
++});
++
++server.listen(Number(process.env.PORT ?? 3000));
+diff --git a/test/assets.test.js b/test/assets.test.js
+new file mode 100644
+index 0000000..340e676
+--- /dev/null
++++ b/test/assets.test.js
+@@ -0,0 +1,18 @@
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { fileURLToPath } from 'node:url';
++import { serveAsset } from '../src/assets.js';
++
++const root = fileURLToPath(new URL('../public/', import.meta.url));
++
++test('serves a stylesheet with its content type', async () => {
++  const res = await serveAsset(root, '/assets/app.css');
++  assert.equal(res.status, 200);
++  assert.match(res.type, /^text\/css/);
++  assert.match(res.body.toString(), /\.price/);
++});
++
++test('answers 404 for a file that does not exist', async () => {
++  const res = await serveAsset(root, '/assets/missing.css');
++  assert.equal(res.status, 404);
++});

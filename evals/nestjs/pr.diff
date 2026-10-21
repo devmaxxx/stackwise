@@ -1,0 +1,117 @@
+diff --git a/src/main.ts b/src/main.ts
+index 2b7c1d0..5e8f9a3 100644
+--- a/src/main.ts
++++ b/src/main.ts
+@@ -1,9 +1,11 @@
++import { ValidationPipe } from '@nestjs/common';
+ import { NestFactory } from '@nestjs/core';
+ import { AppModule } from './app.module';
+ 
+ async function bootstrap() {
+   const app = await NestFactory.create(AppModule);
+   app.enableShutdownHooks();
++  app.useGlobalPipes(new ValidationPipe({ transform: true }));
+   await app.listen(process.env.PORT ?? 3000);
+ }
+ bootstrap();
+diff --git a/src/users/user.entity.ts b/src/users/user.entity.ts
+index 7d1e4c2..0a9b3f6 100644
+--- a/src/users/user.entity.ts
++++ b/src/users/user.entity.ts
+@@ -11,9 +11,12 @@ export class User {
+   @Column()
+   displayName: string;
+ 
+   @Column({ type: 'varchar', default: 'member' })
+   role: 'member' | 'admin';
+ 
+   @Column({ default: false })
+   emailVerified: boolean;
++
++  @Column({ type: 'jsonb', nullable: true })
++  address: { street: string; city: string; postcode: string } | null;
+ }
+diff --git a/src/users/dto/update-profile.dto.ts b/src/users/dto/update-profile.dto.ts
+new file mode 100644
+index 0000000..c4d2e81
+--- /dev/null
++++ b/src/users/dto/update-profile.dto.ts
+@@ -0,0 +1,25 @@
++import { IsOptional, IsString, MaxLength } from 'class-validator';
++
++export class AddressDto {
++  @IsString()
++  @MaxLength(120)
++  street: string;
++
++  @IsString()
++  @MaxLength(60)
++  city: string;
++
++  @IsString()
++  @MaxLength(12)
++  postcode: string;
++}
++
++export class UpdateProfileDto {
++  @IsOptional()
++  @IsString()
++  @MaxLength(80)
++  displayName?: string;
++
++  @IsOptional()
++  address?: AddressDto;
++}
+diff --git a/src/users/users.controller.ts b/src/users/users.controller.ts
+index 91ab3e4..d27c6f0 100644
+--- a/src/users/users.controller.ts
++++ b/src/users/users.controller.ts
+@@ -1,15 +1,21 @@
+-import { Controller, Get, Req, UseGuards } from '@nestjs/common';
++import { Body, Controller, Get, Patch, Req, UseGuards } from '@nestjs/common';
+ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+ import { AuthedRequest } from '../auth/authed-request';
++import { UpdateProfileDto } from './dto/update-profile.dto';
+ import { UsersService } from './users.service';
+ 
+ @Controller('users')
+ @UseGuards(JwtAuthGuard)
+ export class UsersController {
+   constructor(private readonly users: UsersService) {}
+ 
+   @Get('me')
+   me(@Req() req: AuthedRequest) {
+     return this.users.findById(req.user.id);
+   }
++
++  @Patch('me')
++  updateMe(@Req() req: AuthedRequest, @Body() dto: UpdateProfileDto) {
++    return this.users.updateProfile(req.user.id, dto);
++  }
+ }
+diff --git a/src/users/users.service.ts b/src/users/users.service.ts
+index 3c8d5b7..e6f1a29 100644
+--- a/src/users/users.service.ts
++++ b/src/users/users.service.ts
+@@ -1,15 +1,21 @@
+ import { Injectable, NotFoundException } from '@nestjs/common';
+ import { InjectRepository } from '@nestjs/typeorm';
+ import { Repository } from 'typeorm';
++import { UpdateProfileDto } from './dto/update-profile.dto';
+ import { User } from './user.entity';
+ 
+ @Injectable()
+ export class UsersService {
+   constructor(@InjectRepository(User) private readonly repo: Repository<User>) {}
+ 
+   async findById(id: string): Promise<User> {
+     const user = await this.repo.findOneBy({ id });
+     if (!user) throw new NotFoundException();
+     return user;
+   }
++
++  async updateProfile(id: string, dto: UpdateProfileDto): Promise<User> {
++    await this.repo.update({ id }, dto);
++    return this.findById(id);
++  }
+ }

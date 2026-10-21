@@ -1,6 +1,6 @@
 # Expected findings: node
 
-Stacks the skill should detect: Node backend (Express 4, from `package.json`). References: nodejs, security, testing. Do not load TypeScript or React.
+Stacks the skill should detect: Node backend (Express 4, from `package.json`). Required references: nodejs, error-handling, security, testing. Optional: performance, api-design. Must not load: typescript, react, nextjs, nestjs, or any .NET reference.
 
 ## must
 

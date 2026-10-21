@@ -1,6 +1,6 @@
 # Expected findings: react
 
-Stacks the skill should detect: React, TypeScript. References: react, typescript, security, testing. Do not load the .NET or Node references.
+Stacks the skill should detect: React, TypeScript. Required references: react, typescript, error-handling, security, testing. Optional: performance. Must not load: nextjs, nodejs, nestjs, or any .NET reference.
 
 ## must
 
