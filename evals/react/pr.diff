@@ -1,0 +1,45 @@
+diff --git a/web/src/features/orders/OrderSearch.tsx b/web/src/features/orders/OrderSearch.tsx
+new file mode 100644
+index 0000000..b4c5d6e
+--- /dev/null
++++ b/web/src/features/orders/OrderSearch.tsx
+@@ -0,0 +1,39 @@
++import { useEffect, useState } from 'react';
++
++type Order = { id: string; number: string; status: 'pending' | 'paid' | 'shipped' };
++
++export function OrderSearch({ pollMs, customerId }: { pollMs: number; customerId: string }) {
++  const [query, setQuery] = useState('');
++  const [results, setResults] = useState<Order[]>([]);
++  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
++
++  useEffect(() => {
++    fetch(`/api/customers/${customerId}/orders?q=${encodeURIComponent(query)}`)
++      .then((r) => r.json())
++      .then((data: Order[]) => setResults(data));
++  }, [customerId, query]);
++
++  useEffect(() => {
++    const id = setInterval(async () => {
++      const r = await fetch(`/api/customers/${customerId}/orders?q=${encodeURIComponent(query)}`);
++      setResults(await r.json());
++      setLastRefreshed(new Date());
++    }, pollMs);
++    return () => clearInterval(id);
++  }, [pollMs]);
++
++  return (
++    <section>
++      <label htmlFor="order-q">Search orders</label>
++      <input id="order-q" value={query} onChange={(e) => setQuery(e.target.value)} />
++      {lastRefreshed && <small>Updated {lastRefreshed.toLocaleTimeString()}</small>}
++      <ul>
++        {results.map((o) => (
++          <li key={o.id}>
++            {o.number} — {o.status}
++          </li>
++        ))}
++      </ul>
++    </section>
++  );
++}

@@ -1,0 +1,17 @@
+{
+  "name": "stackwise",
+  "description": "Stack-aware pull request review for .NET + Node.js + React.",
+  "owner": {
+    "name": "devmaxxx",
+    "url": "https://github.com/devmaxxx"
+  },
+  "plugins": [
+    {
+      "name": "stackwise",
+      "source": "./",
+      "description": "PR review skill and /stackwise:review command for .NET, ASP.NET Core, EF Core, Node.js, TypeScript and React diffs.",
+      "version": "0.1.0",
+      "category": "development"
+    }
+  ]
+}

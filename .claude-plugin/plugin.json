@@ -1,0 +1,13 @@
+{
+  "name": "stackwise",
+  "version": "0.1.0",
+  "description": "PR review for .NET + Node.js + React codebases: detects the stacks in the diff, loads only the matching checklists, runs a vertical (DB to client) and horizontal (sibling drift) pass, and reports only verified must/should/nit findings.",
+  "author": {
+    "name": "devmaxxx",
+    "url": "https://github.com/devmaxxx"
+  },
+  "homepage": "https://github.com/devmaxxx/stackwise",
+  "repository": "https://github.com/devmaxxx/stackwise",
+  "license": "MIT",
+  "keywords": ["code-review", "pull-request", "dotnet", "aspnetcore", "efcore", "nodejs", "typescript", "react"]
+}

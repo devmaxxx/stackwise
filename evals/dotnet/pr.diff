@@ -1,0 +1,61 @@
+diff --git a/src/Shop.Api/Program.cs b/src/Shop.Api/Program.cs
+index 3f1a2b4..8c9d0e1 100644
+--- a/src/Shop.Api/Program.cs
++++ b/src/Shop.Api/Program.cs
+@@ -12,5 +12,6 @@ builder.Services.AddDbContext<ShopDbContext>(o =>
+     o.UseNpgsql(builder.Configuration.GetConnectionString("Shop")));
+ builder.Services.AddScoped<IOrderService, OrderService>();
++builder.Services.AddSingleton<CustomerSummaryCache>();
+ 
+ var app = builder.Build();
+ 
+@@ -24,3 +25,5 @@ app.UseAuthorization();
+ app.MapControllers();
+ 
++app.MapGet("/api/customers/{id:int}/summary", (int id, CustomerSummaryCache cache, CancellationToken ct) =>
++    cache.GetAsync(id, ct)).RequireAuthorization();
+ app.Run();
+diff --git a/src/Shop.Api/Customers/CustomerSummaryCache.cs b/src/Shop.Api/Customers/CustomerSummaryCache.cs
+new file mode 100644
+index 0000000..a1b2c3d
+--- /dev/null
++++ b/src/Shop.Api/Customers/CustomerSummaryCache.cs
+@@ -0,0 +1,38 @@
++using System.Collections.Concurrent;
++using Microsoft.EntityFrameworkCore;
++
++namespace Shop.Api.Customers;
++
++public sealed record OrderSummary(int OrderId, decimal Total, int LineCount);
++
++public sealed record CustomerSummary(int CustomerId, IReadOnlyList<OrderSummary> Orders);
++
++public sealed class CustomerSummaryCache
++{
++    private readonly ShopDbContext _db;
++    private readonly ConcurrentDictionary<int, CustomerSummary> _cache = new();
++
++    public CustomerSummaryCache(ShopDbContext db)
++    {
++        _db = db;
++    }
++
++    public async Task<CustomerSummary> GetAsync(int customerId, CancellationToken ct)
++    {
++        if (_cache.TryGetValue(customerId, out var hit))
++            return hit;
++
++        var orders = await _db.Orders
++            .Where(o => o.CustomerId == customerId)
++            .ToListAsync(ct);
++
++        var summaries = new List<OrderSummary>();
++        foreach (var order in orders)
++        {
++            var lines = await _db.OrderLines.Where(l => l.OrderId == order.Id).ToListAsync(ct);
++            summaries.Add(new OrderSummary(order.Id, lines.Sum(l => l.Price * l.Quantity), lines.Count));
++        }
++
++        return _cache[customerId] = new CustomerSummary(customerId, summaries);
++    }
++}
